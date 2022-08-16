@@ -1,0 +1,241 @@
+#include"BARNdrive.h"
+BARN rmcs;
+
+byte slave_id1=7;
+byte slave_id2=6;
+
+long int Current_Speed1, Current_Speed2;
+
+const int motor_offset = 3;
+const float l=2.5;
+const float dr=1.5;
+int i=1;
+
+int freqDiff;
+
+
+// Set initial motor power
+int power_l;
+int power_r;
+  
+// Motor A connections
+
+int spd1 = 13;
+int dir1 = 9;
+int brk1 = 8;
+
+// Motor B connections
+int spd2 = 4;
+int dir2 = 5;
+int brk2 = 7;
+
+//pot control Accel
+int accel = A0;
+int val1 = 0; 
+int val1pre=0;
+//pot control steering
+int steer = A1;
+int val2=0;
+int val2pre=0;
+
+
+
+
+void setup() 
+  {
+
+    rmcs.Serial_selection(0);       
+    rmcs.Serial0(9600);   
+    rmcs.begin(&Serial1,9600);
+    rmcs.begin(&Serial2,9600);
+
+    Serial.begin(9600); 
+    pinMode(steer,INPUT);  
+    pinMode(accel,INPUT);  
+    // Set all the motor control pins to outputs
+    pinMode(spd1, OUTPUT);
+    pinMode(spd2, OUTPUT);
+    pinMode(dir1, OUTPUT);
+    pinMode(brk1, OUTPUT);
+    pinMode(dir2, OUTPUT);
+    pinMode(brk2, OUTPUT);
+
+    delay(1000);
+  }
+
+
+
+void loop() 
+  {
+    val1pre=val1;
+    val1 = analogRead(accel); 
+    delay(20);
+    val2pre=val2;
+    val2 = analogRead(steer); 
+    
+    if(val1==0)
+      {
+        off();
+      }
+    else
+      {
+        speedControl(val1,val2);
+        if(val1pre!=val1||val2pre!=val2)
+          {
+            i=1;
+          }
+        else
+          {
+            i=2;
+          }
+ 
+      }
+    freqDiff=DriveFreq(); 
+  }
+
+
+
+
+
+// This function lets you control speed of the motors
+void speedControl(int power, int steern) 
+  {
+    float x,y,w,v,u,z1, power_l1, power_r1,power1;
+    int z;
+    power1=power;
+    y=(steern-511)*30/511;
+    x=y*PI/180;
+    w=tan(x);
+    v=power1*150/1023;
+    u=dr*w*v/l;  //signed speed difference
+    z=abs(u);  // absolute speed difference
+  
+  
+ 
+
+    if(i==1&&steern==512)
+      {   
+        // Set initial motor power
+        power_l1 = v;         
+        power_r1 = v;
+        power_l= round(power_l1);
+        power_r= round(power_l1);
+      }
+
+
+     if(i==1&&steern>512)
+      { 
+        // Set initial motor power for right turn
+        power_l1 = v;
+        power_r1 = power_l1-z;
+        power_l= round(power_l1);
+        power_r= round(power_r1);
+      }
+
+    if(i==1&&steern<512)
+      { 
+        // Set initial motor power for left turn
+        power_r1 = v;
+        power_l1 = power_r1-z;
+        power_l= round(power_l1);
+        power_r= round(power_r1);
+   
+      }
+  
+    
+    //drive
+    drive(power_l,power_r);
+ 
+   
+    if (val2==512)
+      {
+        // If left is faster, slow it down and speed up right
+        if ( freqDiff<0 ) 
+            {
+              power_l -= motor_offset;
+              power_r += motor_offset;
+            }
+
+        // If right is faster, slow it down and speed up left
+        if ( freqDiff>0 ) 
+            {
+              power_l += motor_offset;
+              power_r -= motor_offset;
+            }
+        }
+    delay(20);
+  }
+
+
+
+
+
+
+void drive(int power_a,int power_b)
+{
+  power_a = constrain(power_a, -150, 150);
+  power_b = constrain(power_b, -150, 150);
+
+  // Left motor direction
+  if ( power_a < 0 ) 
+        {
+          digitalWrite(brk1, HIGH);
+          digitalWrite(dir1, HIGH);
+        } 
+  else 
+        {
+          digitalWrite(brk1, HIGH);
+          digitalWrite(dir1, LOW);
+        }
+
+  // Right motor direction
+  if ( power_b < 0 ) 
+        {
+          digitalWrite(brk2, HIGH);
+          digitalWrite(dir2, HIGH);
+        } 
+        
+  else 
+        {
+          digitalWrite(brk2, HIGH);
+          digitalWrite(dir2, LOW);
+        }
+
+  analogWrite(spd1,abs(power_a));
+  analogWrite(spd2,abs(power_b));
+
+  }
+
+
+ 
+ 
+ 
+ 
+ 
+ int DriveFreq()
+  {
+    int p,q,diff;
+  
+    p=rmcs.Speed_Feedback(slave_id1); 
+    q=rmcs.Speed_Feedback(slave_id2); 
+  
+    Serial.print("Current Speed feedback : ");
+    Serial.print(p);
+    Serial.print('\t');
+    Serial.println(q);
+    diff=p-q;
+    return(diff);
+  
+  }
+  
+  
+  
+  
+  
+  void off()
+  {
+     digitalWrite(brk1, LOW);
+     digitalWrite(brk2, LOW);
+     analogWrite(spd1,0);
+     analogWrite(spd2,0);
+  }
